@@ -242,14 +242,8 @@ public struct OnboardzyViewModifier: ViewModifier {
             } else {
                 // Show a placeholder view while waiting for onboarding
                 Color.white
-                    .overlay(
-                        VStack {
-                            Text("Loading...")
-                                .font(.headline)
-                            ProgressView()
-                                .padding()
-                        }
-                    )
+                    // Make it cover the entire screen including safe areas
+                    .edgesIgnoringSafeArea(.all)
                     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OnboardzyCompletedNotification"))) { _ in
                         // Update the refresh ID to force the view to refresh
                         refreshID = UUID()

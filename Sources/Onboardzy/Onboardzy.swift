@@ -75,9 +75,6 @@ public class Onboardzy {
     /// Whether the user has completed the onboarding process
     public static var hasCompletedOnboarding: Bool = false
     
-    // Private storage for preloaded WebView
-    private static var preloadedWebView: WKWebView?
-    private static var isPreloading = false
     private static var onCompletionCallback: (([String: Any]?) -> Void)?
     
     // State management for SwiftUI
@@ -107,9 +104,6 @@ public class Onboardzy {
         } else {
             print("📱 Onboardzy: Onboarding not completed yet, will show")
         }
-        
-        // Start preloading the WebView and content in the background
-        preloadOnboardingContent()
         
         // Set onboarding active state if not completed
         if !hasCompletedOnboarding {
@@ -143,24 +137,8 @@ public class Onboardzy {
             return
         }
         
-        // Create the view controller, potentially using the preloaded WebView
-        let onboardingVC: OnboardingViewController
-        
-        if let preloaded = preloadedWebView {
-            // Use the preloaded WebView if available
-            onboardingVC = OnboardingViewController(appId: key, onComplete: handleOnboardingComplete, preloadedWebView: preloaded)
-            preloadedWebView = nil // Clear the reference to prevent reuse
-            
-            // Start preloading the next one for future use
-            DispatchQueue.global(qos: .background).async {
-                isPreloading = false
-                preloadOnboardingContent()
-            }
-        } else {
-            // Fall back to normal initialization if preloaded WebView isn't ready
-            onboardingVC = OnboardingViewController(appId: key, onComplete: handleOnboardingComplete)
-        }
-        
+        // Create the onboarding view controller
+        let onboardingVC = OnboardingViewController(appId: key, onComplete: handleOnboardingComplete)
         onboardingVC.modalPresentationStyle = .fullScreen
 
         // Present from the root view controller
@@ -199,46 +177,6 @@ public class Onboardzy {
         
         // Post notification to update SwiftUI views
         NotificationCenter.default.post(name: NSNotification.Name("OnboardzyCompletedNotification"), object: nil)
-    }
-    
-    /// Preload the WebView and content for faster display
-    private static func preloadOnboardingContent() {
-        // Only preload if not already preloading and we have an API key
-        guard !isPreloading, let key = OnboardzyConfig.shared.appId else {
-            return
-        }
-        
-        isPreloading = true
-        
-        // All WebKit operations should happen on the main thread
-        DispatchQueue.main.async {
-            // Configure WebView
-            let config = WKWebViewConfiguration()
-            config.allowsInlineMediaPlayback = true
-            config.preferences.javaScriptEnabled = true
-            
-            // Create content controller
-            let contentController = WKUserContentController()
-            config.userContentController = contentController
-            
-            // Create WebView with zero frame (will be resized later)
-            let webView = WKWebView(frame: .zero, configuration: config)
-            
-            // Start loading the content
-            let urlString = "https://onboardzy.com/onboarding/\(key)"
-            if let url = URL(string: urlString) {
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-                webView.load(request)
-                
-                // Store the preloaded WebView
-                preloadedWebView = webView
-                isPreloading = false
-            } else {
-                // Failed to create URL, reset state
-                isPreloading = false
-                print("❌ Failed to create URL from string: \(urlString)")
-            }
-        }
     }
     
     /// Load saved state from UserDefaults

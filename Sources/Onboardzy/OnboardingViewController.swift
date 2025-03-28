@@ -6,13 +6,14 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
     private var webView: WKWebView!
     private var appId: String
     private var onComplete: ((_ result: [String: Any]?) -> Void)
-    private var usingPreloadedWebView: Bool = false
+    private var welcomeOverlayView: UIView?
+    private var containerView: UIView!
+    private var skeletonViews: [UIView] = []
 
     // Standard initializer
     init(appId: String, onComplete: @escaping (_ result: [String: Any]?) -> Void) {
         self.appId = appId
         self.onComplete = onComplete
-        self.usingPreloadedWebView = false
         
         // Configure WebView before view is loaded for faster startup
         let config = WKWebViewConfiguration()
@@ -31,28 +32,28 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
         // Now it's safe to add self as a message handler
         contentController.add(self, name: "onboardingComplete")
     }
-    
-    // Initializer with preloaded WebView
-    init(appId: String, onComplete: @escaping (_ result: [String: Any]?) -> Void, preloadedWebView: WKWebView) {
-        self.appId = appId
-        self.onComplete = onComplete
-        self.webView = preloadedWebView
-        self.usingPreloadedWebView = true
-        
-        super.init(nibName: nil, bundle: nil)
-        
-        // Add JavaScript message handler for communication after super.init
-        webView.configuration.userContentController.add(self, name: "onboardingComplete")
-    }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
     override func loadView() {
-        // Use loadView to set the webView as the main view
-        // This is faster than setting it in viewDidLoad
-        view = webView
+        // Create a container view instead of using the WebView directly as the main view
+        containerView = UIView(frame: UIScreen.main.bounds)
+        containerView.backgroundColor = .white
+        view = containerView
+        
+        // Add WebView to the container
+        webView.frame = containerView.bounds
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        containerView.addSubview(webView)
+        
+        // Create and add the skeleton loader overlay
+        let overlay = createSkeletonLoaderOverlay()
+        overlay.frame = containerView.bounds
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        containerView.addSubview(overlay)
+        welcomeOverlayView = overlay
     }
 
     override func viewDidLoad() {
@@ -71,10 +72,32 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
         // Improve performance with these settings
         webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         
-        // Start loading immediately if not using preloaded WebView
-        if !usingPreloadedWebView {
-            loadOnboardingContent()
+        // Make WebView ignore safe areas
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.contentMode = .scaleToFill
+        
+        // Extend layout beyond safe areas
+        edgesForExtendedLayout = .all
+        additionalSafeAreaInsets = .zero
+        view.insetsLayoutMarginsFromSafeArea = false
+        if #available(iOS 13.0, *) {
+            webView.insetsLayoutMarginsFromSafeArea = false
         }
+        
+        // Start loading immediately
+        loadOnboardingContent()
+        
+        // Start pulse animation for skeleton views
+        animateSkeletonPulse()
+    }
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        
+        // Ensure the WebView and overlay fill the entire screen
+        containerView.frame = UIScreen.main.bounds
+        webView.frame = containerView.bounds
+        welcomeOverlayView?.frame = containerView.bounds
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -83,6 +106,82 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
         // Load content if not loaded yet (belt and suspenders approach)
         if webView.url == nil {
             loadOnboardingContent()
+        }
+    }
+    
+    private func createSkeletonLoaderOverlay() -> UIView {
+        // Create an overlay with white background to match the web page
+        let overlay = UIView(frame: UIScreen.main.bounds)
+        overlay.backgroundColor = .white
+        
+        // Create a container for the skeleton items with proper padding
+        // pt-14 is approximately 56 points (14 * 4)
+        // px-5 is approximately 20 points (5 * 4)
+        let skeletonContainer = UIView()
+        skeletonContainer.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(skeletonContainer)
+        
+        // Position the container with proper padding
+        NSLayoutConstraint.activate([
+            skeletonContainer.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 56),
+            skeletonContainer.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 20),
+            skeletonContainer.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -20),
+            skeletonContainer.bottomAnchor.constraint(lessThanOrEqualTo: overlay.bottomAnchor)
+        ])
+        
+        // Create 5 skeleton placeholder rectangles
+        // gap-6 is approximately 24 points (6 * 4)
+        var previousView: UIView? = nil
+        
+        for i in 1...5 {
+            // Create a rounded rectangle placeholder
+            let skeletonRect = UIView()
+            skeletonRect.backgroundColor = UIColor(red: 229/255, green: 231/255, blue: 235/255, alpha: 1.0) // Equivalent to bg-gray-200
+            skeletonRect.layer.cornerRadius = 8 // rounded-lg
+            skeletonRect.translatesAutoresizingMaskIntoConstraints = false
+            skeletonContainer.addSubview(skeletonRect)
+            
+            // Position each rectangle
+            if let previousView = previousView {
+                NSLayoutConstraint.activate([
+                    skeletonRect.topAnchor.constraint(equalTo: previousView.bottomAnchor, constant: 24), // gap-6
+                ])
+            } else {
+                NSLayoutConstraint.activate([
+                    skeletonRect.topAnchor.constraint(equalTo: skeletonContainer.topAnchor),
+                ])
+            }
+            
+            // Make it full width and h-20 (approximately 80 points)
+            NSLayoutConstraint.activate([
+                skeletonRect.leadingAnchor.constraint(equalTo: skeletonContainer.leadingAnchor),
+                skeletonRect.trailingAnchor.constraint(equalTo: skeletonContainer.trailingAnchor),
+                skeletonRect.heightAnchor.constraint(equalToConstant: 80)
+            ])
+            
+            // If it's the last one, connect it to the bottom
+            if i == 5 {
+                NSLayoutConstraint.activate([
+                    skeletonRect.bottomAnchor.constraint(equalTo: skeletonContainer.bottomAnchor)
+                ])
+            }
+            
+            // Store for animation
+            skeletonViews.append(skeletonRect)
+            previousView = skeletonRect
+        }
+        
+        return overlay
+    }
+    
+    private func animateSkeletonPulse() {
+        // Create a pulse animation similar to animate-pulse in Tailwind
+        // This will animate the opacity to simulate the pulse effect
+        
+        for skeletonView in skeletonViews {
+            UIView.animate(withDuration: 1.5, delay: 0, options: [.autoreverse, .repeat, .curveEaseInOut], animations: {
+                skeletonView.alpha = 0.5
+            }, completion: nil)
         }
     }
     
@@ -132,6 +231,14 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
     
     // Check for load completion
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Fade out the welcome overlay once content is loaded
+        UIView.animate(withDuration: 0.3, animations: {
+            self.welcomeOverlayView?.alpha = 0
+        }, completion: { _ in
+            self.welcomeOverlayView?.removeFromSuperview()
+            self.welcomeOverlayView = nil
+        })
+        
         // Inject script to capture completion
         let script = """
         if (window.onboardingCompleteHandlerAdded !== true) {

@@ -231,13 +231,32 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
     
     // Check for load completion
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Fade out the welcome overlay once content is loaded
-        UIView.animate(withDuration: 0.3, animations: {
-            self.welcomeOverlayView?.alpha = 0
-        }, completion: { _ in
-            self.welcomeOverlayView?.removeFromSuperview()
-            self.welcomeOverlayView = nil
-        })
+        // Check if the page loaded successfully or returned null/empty content
+        webView.evaluateJavaScript("document.body.innerText") { [weak self] (result, error) in
+            guard let self = self else { return }
+            
+            if let pageContent = result as? String, pageContent.lowercased() == "null" || pageContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // If the page content is "null" or empty, close the onboarding
+                print("⚠️ Onboarding content is empty or null, closing onboarding")
+                DispatchQueue.main.async {
+                    self.dismiss(animated: true) {
+                        self.onComplete(nil)
+                    }
+                }
+                return
+            }
+            
+            // If we have valid content, proceed with normal flow
+            DispatchQueue.main.async {
+                // Fade out the welcome overlay once content is loaded
+                UIView.animate(withDuration: 0.3, animations: {
+                    self.welcomeOverlayView?.alpha = 0
+                }, completion: { _ in
+                    self.welcomeOverlayView?.removeFromSuperview()
+                    self.welcomeOverlayView = nil
+                })
+            }
+        }
         
         // Inject script to capture completion
         let script = """
@@ -298,7 +317,23 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
     
     // Handle errors
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        print("WebView load failed: \(error.localizedDescription)")
+        print("WebView navigation failed: \(error.localizedDescription)")
+        handleOnboardingError()
+    }
+    
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        print("WebView failed to load: \(error.localizedDescription)")
+        handleOnboardingError()
+    }
+    
+    private func handleOnboardingError() {
+        // If we encounter any loading errors, close the onboarding
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.dismiss(animated: true) {
+                self.onComplete(nil)
+            }
+        }
     }
     
     // Clean up when view is being removed

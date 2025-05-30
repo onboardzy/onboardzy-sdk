@@ -303,7 +303,15 @@ class OnboardingViewController: UIViewController, WKNavigationDelegate, WKScript
     
     // Clean up when view is being removed
     deinit {
+        // Stop any ongoing loading
+        webView.stopLoading()
+        
         // Remove message handler to prevent memory leaks
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "onboardingComplete")
+        
+        // Clear delegates and references
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.scrollView.delegate = nil
     }
 }

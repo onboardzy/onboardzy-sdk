@@ -95,26 +95,18 @@ public class Onboardzy {
         // Load saved state
         loadSavedState()
         
-        // If we already have completed onboarding, mark data as ready
-        if hasCompletedOnboarding {
-            isDataReady = true
-            
-            // Debug log to verify the state is loaded correctly
-            print("📱 Onboardzy: Onboarding previously completed, skipping")
-        } else {
-            print("📱 Onboardzy: Onboarding not completed yet, will show")
-        }
-        
-        // Set onboarding active state if not completed
+        // If onboarding wasn't completed, we need to show it
         if !hasCompletedOnboarding {
             isOnboardingActive = true
-        }
-        
-        // Check if we need to show onboarding automatically
-        DispatchQueue.main.async {
-            if !hasCompletedOnboarding {
+            isDataReady = false
+            
+            // Show onboarding on the next run loop to ensure the app is fully launched
+            DispatchQueue.main.async {
                 showOnboarding()
             }
+        } else {
+            isDataReady = true
+            print("📱 Onboardzy: Onboarding previously completed, skipping")
         }
     }
     
@@ -132,20 +124,22 @@ public class Onboardzy {
     
     /// Manually show the onboarding flow, even if previously completed
     public static func showOnboarding() {
+        // Prevent multiple instances
+        guard isOnboardingActive else { return }
+        
         guard let key = OnboardzyConfig.shared.appId else {
             print("❌ Onboardzy not configured. Please call Onboardzy.configure(appId:) first.")
             return
         }
         
-        // Create the onboarding view controller
-        let onboardingVC = OnboardingViewController(appId: key, onComplete: handleOnboardingComplete)
-        onboardingVC.modalPresentationStyle = .fullScreen
-
-        // Present from the root view controller
-        if let root = UIApplication.shared.windows.first?.rootViewController {
+        // Only show if onboarding is active and not already presented
+        if isOnboardingActive, 
+           let root = UIApplication.shared.windows.first?.rootViewController,
+           root.presentedViewController == nil {
+            
+            let onboardingVC = OnboardingViewController(appId: key, onComplete: handleOnboardingComplete)
+            onboardingVC.modalPresentationStyle = .fullScreen
             root.present(onboardingVC, animated: true)
-        } else {
-            print("❌ Couldn't find a root view controller.")
         }
     }
     
